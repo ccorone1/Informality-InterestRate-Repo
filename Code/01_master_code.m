@@ -28,8 +28,9 @@
 
 
 clear all; clc; close all; tic;
-addpath("D:\leyva_research\code\matlab\20_11_25");
-addpath("D:\leyva_research\code\matlab"); 
+addpath("C:\Users\Carlos Coronel\Documents\Respaldo Memoria\leyva_research\code\matlab");
+addpath("C:\Users\Carlos Coronel\Documents\Respaldo Memoria\leyva_research\code\matlab\20_11_25");
+ 
 
 %%  1. Parameters
 
@@ -53,11 +54,11 @@ USE_UNIT_SHOCK = true;
 
 if monthly_data
     CUTOFF = "12/01/2019"; 
-    filename = "D:\leyva_research\data\clean\mensuales_2005.xlsx";
+    filename = "C:\Users\Carlos Coronel\Documents\Respaldo Memoria\leyva_research\data\clean\mensuales_2005.xlsx";
     time_granularity = "Mensual";
 else
     CUTOFF = "2019Q4";
-    filename = "D:\leyva_research\data\clean\trimestrales_primero.xlsx";
+    filename = "C:\Users\Carlos Coronel\Documents\Respaldo Memoria\leyva_research\data\clean\trimestrales_primero.xlsx";
     time_granularity = "Trimestral";
 end
 m = 16;      % Chebyshev max order
