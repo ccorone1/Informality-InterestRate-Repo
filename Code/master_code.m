@@ -53,16 +53,16 @@ USE_UNIT_SHOCK = true;
 % --- Parámetros del Modelo ---
 
 if monthly_data
-    CUTOFF = "12/01/2020"; 
+    CUTOFF = "12/01/2019"; 
     filename = "C:\Users\Carlos Coronel\Documents\Respaldo Memoria\leyva_research\data\clean\mensuales_2005.xlsx";
     time_granularity = "Mensual";
 else
-    CUTOFF = "2020Q4";
+    CUTOFF = "2025Q2";
     filename = "C:\Users\Carlos Coronel\Documents\Respaldo Memoria\leyva_research\data\clean\trimestrales_primero.xlsx";
     time_granularity = "Trimestral";
 end
 m = 16;      % Chebyshev max order
-m_star = 15; % Degree of the polynomial to be used
+m_star = 3; % Degree of the polynomial to be used
 p = 1;      % VAR lags
 s = 84;     % IRF horizon (steps)
 reps = 1000;  % Monte carlo repetitions
@@ -124,22 +124,22 @@ fprintf('Var variables in final order:\n');
 disp(var_order');
 
 % Covid Cutoff
+
 if use_precovid
-    cutoff_idx = find(strcmp(periods, CUTOFF));
-    if isempty(cutoff_idx)
-        warning('Cut off date was not found "%s". All the data will be used.', CUTOFF);
-    else
-        Tcut = 1:cutoff_idx;
-        Ytbl = Ytbl(Tcut, :);
-        
-        if ~isempty(Ytbl_exo_raw)
-            Ytbl_exo_raw = Ytbl_exo_raw(Tcut, :);
-        end
-        
-        periods = periods(Tcut);
-        fprintf('Cropped data to %s (line %d).\n', CUTOFF, cutoff_idx);
-    end
-end
+     cutoff_idx = find(strcmp(periods, CUTOFF));
+     if isempty(cutoff_idx)
+         warning('Cut off date was not found "%s". All the data will be used.', CUTOFF);
+     else
+         Tcut = 1:cutoff_idx;
+         Ytbl = Ytbl(Tcut, :);
+         
+         if ~isempty(Ytbl_exo_raw)
+             Ytbl_exo_raw = Ytbl_exo_raw(Tcut, :);
+         end
+         periods = periods(Tcut);
+         fprintf('Cropped data to %s (line %d).\n', CUTOFF, cutoff_idx);
+     end
+ end
 [n, p_selected] = size(Ytbl); % n = obs, p_selected = # de variables elegidas
 
 % Extraer nombres de las exógenas externas ---
@@ -289,6 +289,8 @@ if any(isnan(endo(:))) || any(isnan(exo(:)))
     error('NaNs detectados. Revisa el CMA o los logs.');
 end
 
+
+
 %% 5. VARX (UHLIG)
 data = endo; 
 [~, k] = size(data); 
@@ -426,12 +428,12 @@ for ii = 1:ne
     IR_data = eval(['resp' num2str(ii) 'imp' num2str(IMP)]);
     
     if use_95percent
-        IR = quantile(IR_data', [0.025 0.50 0.975])'*100;
+        IR = quantile(IR_data', [0.025 0.50 0.975])';%*100;
     else
-        IR = quantile(IR_data', [0.16 0.50 0.84])'*100;
+        IR = quantile(IR_data', [0.16 0.50 0.84])';%*100;
     end
     
-    IRm = median(IR_data, 2) * 100;
+    IRm = median(IR_data, 2);% *100;
     y1 = IR(:,1)';  
     y2 = IR(:,2)';  
     y3 = IR(:,3)';

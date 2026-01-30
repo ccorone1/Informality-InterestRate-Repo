@@ -4,31 +4,32 @@
 % Versión: multi-m* (Elizondo)
 
 clear all; clc; close all; tic;
-addpath("D:\leyva_research\code\matlab\20_11_25");
-addpath("D:\leyva_research\code\matlab");
+addpath("C:\Users\Carlos Coronel\Documents\Respaldo Memoria\leyva_research\code\matlab");
+addpath("C:\Users\Carlos Coronel\Documents\Respaldo Memoria\leyva_research\code\matlab\20_11_25");
+ 
 
 %% 1. Parámetros generales
 
 default_var_indices   = [1,2,3,4];
 
 USE_INTERACTIVE_SELECTION = true;
-use_precovid      = false;
+use_precovid      = true;
 use_cosine_def    = true;
 monthly_data      = true;
 USE_UNIT_SHOCK    = true;
 
 if monthly_data
     CUTOFF   = "12/01/2019";
-    filename = "D:\leyva_research\data\clean\mensuales_2005.xlsx";
+    filename = "C:\Users\Carlos Coronel\Documents\Respaldo Memoria\leyva_research\data\clean\mensuales_2005.xlsx";
     time_granularity = "Mensual";
 else
     CUTOFF   = "2019Q4";
-    filename = "D:\leyva_research\data\clean\trimestrales_primero.xlsx";
+    filename = "C:\Users\Carlos Coronel\Documents\Respaldo Memoria\leyva_research\data\clean\trimestrales_primero.xlsx";
     time_granularity = "Trimestral";
 end
 
 m            = 301;                          % orden máximo Chebyshev
-m_star_grid  = [1 2 3 15 49 50 99 100 149 150 300];       % grados a comparar
+m_star_grid  = [2 3 5 15 50 99 100 149];       % grados a comparar
 p            = 1;                            % lags VAR
 s            = 84;                           % horizonte IRF
 reps         = 1000;                         % draws Uhlig
