@@ -16,11 +16,12 @@ addpath("C:\Users\Carlos Coronel\Documents\Respaldo Memoria\leyva_research\code\
 % default index
 default_var_indices = [1,2,3,4];
 USE_INTERACTIVE_SELECTION = true; 
-use_precovid = true; %crop to cutoff
+use_precovid = false; %crop to cutoff
 use_cosine_def = true;
 use_68percent = true; %You can choose to plot one or both of the CI, if both are false none will be plotted
 use_95percent = true; 
-monthly_data = false; %Usar datos mensuales
+monthly_data = true; %Usar datos mensuales
+PLOT_CHEB_TREND_SUBPLOTS = true;   % true/false: figura adicional con series + tendencia Chebyshev 
 USE_UNIT_SHOCK = true;
 
 % --- Parámetros del Modelo ---
@@ -33,7 +34,7 @@ else
     filename = "C:\Users\Carlos Coronel\Documents\Respaldo Memoria\leyva_research\data\clean\trimestrales_primero.xlsx";
     time_granularity = "Trimestral";
 end
-m = 25;      % Chebyshev max order
+m = 10;      % Chebyshev max order
 m_star = 6; % Degree of the polynomial to be used
 p = 1;      % VAR lags
 s = 49;     % IRF horizon (steps)
@@ -181,53 +182,37 @@ if use_precovid
     end
 end
 
-% 3.3 GENERACIÓN DEL POLINOMIO (Sobre la muestra definitiva)
-% Chevysheb
-if monthly_data
-    try
-        dt = datetime(periods_cma, "InputFormat","MM/dd/yyyy");
-    catch
-        dt = datetime(periods_cma); 
-    end
-else
-    try
-        dt = datetime(periods_cma, "InputFormat","uuuu'Q'Q");
-    catch
-        dt = datetime(periods_cma);
-    end
-    dt = dateshift(dt, 'end', 'quarter');
-end
+%% 3.3 GENERACIÓN DEL POLINOMIO (nodos Chebyshev / DCT)
+% Nota: Esta base es por índice de tiempo (1..n_cma), no por calendario.
+% Requiere que existan en el path: chevyp.m, chevyp_ort0.m, chevyp_ort1.m, chevyp_ort2.m, chevyp_ort3.m
 
-% --- Construir tiempo en años desde inicio ---
-time_years = years(dt - dt(1));  
-% --- Escalar a [-1, 1] ---
-% IMPORTANTE: Ahora t_cma terminará en 1 exactamente en la fecha de CORTE
-t_cma = 2*(time_years - min(time_years)) / (max(time_years) - min(time_years)) - 1;
-t_cma = max(-1, min(1, t_cma));  
+tt = (1:n_cma)';   % índice temporal
 
-% --- Construir el polinomio ---
-if use_cosine_def
-    theta = acos(t_cma);
-    kvec  = 0:m;
-    T     = cos(theta * kvec);
-else
-    T        = zeros(n_cma, m+1);
-    T(:, 1)  = 1;
-    if m >= 1
-        T(:, 2) = t_cma;
+su = [];
+Jmax = ceil(m_star/2);
+
+for j = 1:Jmax
+    % Término impar (orden 2j-1) ortogonalizado a [1, t/n] (y a impares previos)
+    if (2*j - 1) <= m_star
+        su = [su, chevyp_ort2(j, n_cma, tt)];
     end
-    for kk = 2:m
-        T(:, kk+1) = 2*t_cma.*T(:, kk) - T(:, kk-1);
+
+    % Término par (orden 2j)
+    if (2*j) <= m_star
+        su = [su, chevyp_ort3(j, n_cma, tt)];
     end
 end
 
-% Selección del polinomio
-% --- Chebyshev basis to estimate sum_{k} gamma_k T_k(t) ---
-m_cheb_max = m_star;          % include k = 1..m (full), or set smaller (e.g., 6, 8, 10)
-T_cheb = T(:, 2:(m_cheb_max+1));   % drop T0 because estimavarx already adds intercept
+% Incluye el término lineal "ortogonal" (sin constante)
+T_cheb = [chevyp_ort1(n_cma, tt), su];
 
-% center each column (recommended)
+% (Recomendado) Centrar para asegurar ortogonalidad con el intercept del VARX
 T_cheb = T_cheb - mean(T_cheb, 1);
+
+% Conteo real de términos que entran como exógenos (incluye el lineal)
+n_cheb_terms = size(T_cheb, 2);
+fprintf('Chebyshev terms in exo (incl. linear): %d | max order k<=%d\n', n_cheb_terms, m_star);
+
 
 %% 4. log(Variable) y Construcción Final
 % Log a las endógenas 
@@ -259,7 +244,8 @@ data = endo;
 ne = k;
 t = (0:s-1)';
 
-fprintf('Estimando VARX con %d variables exógenas (%d Chebyshev + %d Externas)\n', size(exo,2), size(T_cheb,2),size(exo_external_final,2));
+fprintf('Estimando VARX con %d variables exógenas (%d Chebyshev incl. linear + %d Externas)\n', ...
+    size(exo,2), size(T_cheb,2), size(exo_external_final,2));
 % VARX con OLS 
 [betas, xxx, omega, res] = estimavarx(data, p, exo);
 
@@ -420,8 +406,8 @@ else
     cutoff_text = 'Con covid';
 end
 
-sgtitle(sprintf('IRF al shock de %s (Cholesky) | p=%d, m*=%d, s=%d, %s, %s, Exo=%s', ...
-    variable_names{IMP}, p, m_star, s, cutoff_text, time_granularity, txt_exo), 'FontSize', 14);
+sgtitle(sprintf('IRF al shock de %s (Cholesky) | p=%d, ChebTerms=%d (k<=%d), s=%d, %s, %s, Exo=%s', ...
+    variable_names{IMP}, p, size(T_cheb,2), m_star, s, cutoff_text, time_granularity, txt_exo), 'FontSize', 14);
 
 % --- Layout de subplots (robusto si ne cambia) ---
 ncols = 4;
@@ -472,6 +458,93 @@ for ii = 1:(nrows*ncols)
     set(gca, 'Layer', 'top');
     hold off;
 end
+
+
+%% 6.1 Subplots: Series vs tendencia Chebyshev
+if PLOT_CHEB_TREND_SUBPLOTS
+
+    if monthly_data
+        try
+            xdt = datetime(periods_cma, "InputFormat","MM/dd/yyyy");
+        catch
+            xdt = datetime(periods_cma);
+        end
+    else
+        try
+            xdt = datetime(periods_cma, "InputFormat","uuuu'Q'Q");
+        catch
+            xdt = datetime(periods_cma);
+        end
+        xdt = dateshift(xdt, 'end', 'quarter');
+    end
+
+    % --- Datos: endo ya está en log(CMA) y cortado ---
+    Yall = endo;                % (T x ne)
+    Tobs = size(Yall,1);
+    tt   = (1:Tobs)';
+
+    % --- Construye la base EXACTA para tendencia (incluye constante) ---
+    % X = [chevyp_ort0, chevyp_ort1, su], con su formado por (impar ort2, par ort3)
+    su = [];
+    Jmax = ceil(m_star/2);
+    for j = 1:Jmax
+        if (2*j - 1) <= m_star
+            su = [su, chevyp_ort2(j, Tobs, tt)];
+        end
+        if (2*j) <= m_star
+            su = [su, chevyp_ort3(j, Tobs, tt)];
+        end
+    end
+
+    Xtrend = [chevyp_ort0(Tobs), chevyp_ort1(Tobs, tt), su];   % (T x Ktrend)
+
+    % --- Figura aparte ---
+    figure('Name','Series vs Tendencia Chebyshev','Color','w');
+
+    ncols_tr = 2;                       % más legible que 4 para series
+    nrows_tr = ceil(ne / ncols_tr);
+
+    for j = 1:(nrows_tr*ncols_tr)
+        subplot(nrows_tr, ncols_tr, j);
+
+        if j > ne
+            axis off;
+            continue
+        end
+
+        Y = Yall(:, j);
+
+        A = (Xtrend' * Xtrend);
+        b = (Xtrend' * Y);
+        beta_ols = gaussj(A, b);
+
+        YS = Xtrend * beta_ols;   % tendencia Cheb
+
+        plot(xdt, Y,  'LineWidth', 1.0); hold on;
+        plot(xdt, YS, 'LineWidth', 2.0);
+        grid on; box on;
+
+        title(variable_names{j}, 'Interpreter','none');
+
+        % Etiquetas: solo abajo para no saturar
+        if j > (nrows_tr-1)*ncols_tr
+            xlabel('Time');
+        end
+
+        % Leyenda solo en el primer subplot
+        if j == 1
+            legend('Y (log, CMA)','Tendencia Chebyshev','Location','best');
+        end
+
+        hold off;
+    end
+
+    sgtitle(sprintf('Series vs Tendencia Chebyshev | m*=%d | %s | %s', ...
+        m_star, cutoff_text, time_granularity), 'FontSize', 14);
+
+end
+
+
 
 %%  7. Save final results
 results_meta = struct();
