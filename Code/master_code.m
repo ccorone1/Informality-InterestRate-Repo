@@ -1,6 +1,6 @@
 %% Data processing and SVAR with Chevysheb estimation with input selection
 %
-% By Carlos Coronel (Last update: 27 November, 2025)                                                  
+% By Carlos Coronel (Last update: 06 february, 2026)                                                  
 %
 % CORRECCIÓN ACTUALIZADA:
 % 1. Calcula CMA sobre Full Sample (evita end-point bias).
