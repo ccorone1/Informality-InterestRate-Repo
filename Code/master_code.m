@@ -425,7 +425,7 @@ for ii = 1:(nrows*ncols)
     end
 
     IR_data = eval(['resp' num2str(ii) 'imp' num2str(IMP)]);   % (s x reps)
-    IRm     = median(IR_data, 2);                               % (s x 1)
+    IRm     = mean(IR_data, 2);                               % (s x 1)
 
     hold on;
 
