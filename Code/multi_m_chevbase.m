@@ -1,60 +1,51 @@
-%% MASTER (multi m*): Data processing + VARX-SVAR (Cholesky) + IRFs for multiple m*
+%% MASTER-aligned (multi m*): Data processing + VARX-SVAR (Cholesky) + IRFs for multiple m*
 %
-% - Integra la lógica del "Master": CMA en full sample -> corte -> Chebyshev en muestra cortada
-% - Para cada m* en m_star_grid:
-%     * usa TODA la base Chebyshev k=1..m* (no solo un polinomio)
-%     * estima VARX
-%     * hace draws tipo Uhlig y guarda la MEDIANA de las IRFs
-% - Grafica múltiples m* en la misma figura (SIN intervalos de confianza)
-%
-% Requiere en el path:
-%   - cma_m / cma_q
-%   - estimavarx
-%   - randnm
-%   - impulse
-%
-% Carlos Coronel - multi m* integrado
+% Method aligned to master_code.m:
+% 1) CMA on full sample
+% 2) Cutoff on smoothed data
+% 3) Chebyshev basis built on cut sample using chevyp_ort* functions
+% 4) VARX + Uhlig-style draws using xx_cond (Schur complement)
+% 5) Plot median IRFs for a grid of m*
 
 clear all; clc; close all; tic;
+rng(12345,'twister');
+addpath("C:\Users\Carlos Coronel\Documents\Informalidad\Informality-InterestRate\Code\calls");
 
-addpath("C:\Users\Carlos Coronel\Documents\Respaldo Memoria\leyva_research\code\matlab");
-addpath("C:\Users\Carlos Coronel\Documents\Respaldo Memoria\leyva_research\code\matlab\20_11_25");
-
-%% 1) Parámetros
+%% 1) Parameters
 
 default_var_indices       = [1,2,3,4];
 USE_INTERACTIVE_SELECTION = true;
-
-use_precovid   = true;   % corta en CUTOFF (después del CMA)
-use_cosine_def = true;    % Chebyshev via cos(k*acos(t))
+% 065438
+use_precovid   = true;
 monthly_data   = false;
-USE_UNIT_SHOCK = true;    % normaliza para que el shock tenga unidad en su propia variable
+USE_UNIT_SHOCK = true;
 
-% --- Datos ---
+% Data configuration
 if monthly_data
-    CUTOFF = "12/01/2019";
+    CUTOFF = "06/01/2019";
     filename = "C:\Users\Carlos Coronel\Documents\Respaldo Memoria\leyva_research\data\clean\mensuales_2005.xlsx";
     time_granularity = "Mensual";
 else
-    CUTOFF = "2019Q4";
+    CUTOFF = "2019Q2";
     filename = "C:\Users\Carlos Coronel\Documents\Respaldo Memoria\leyva_research\data\clean\trimestrales_primero.xlsx";
     time_granularity = "Trimestral";
 end
 
-% --- Grid de m* a comparar (EDITA AQUÍ) ---
-m_star_grid = [ 2 3 4 6 7 8 9 11 12];      % grados a comparar (Chebyshev k=1..m*)
-m_max       = max(m_star_grid); % orden máximo para construir T (0..m_max)
+% Grid of m* to compare
+m_star_grid = [5 6 7 8 9 10 15];
 
-% --- VAR / IRF ---
-p    = 1;       % rezagos VAR
-s    = 49;      % horizonte IRF
-reps = 1000;    % draws Uhlig
+% VAR / IRF
+p    = 1;
+s    = 17;
+reps = 1000;
 
-%% 2) Carga y selección (endo/exo)
+assert(all(m_star_grid >= 1), 'm_star_grid must contain integers >= 1.');
+
+%% 2) Load and variable selection
 
 TBL = readtable(filename);
 
-% Periodos
+% Period formatting (same logic as master_code)
 if monthly_data
     try
         if isdatetime(TBL{:,1})
@@ -63,42 +54,40 @@ if monthly_data
             periods = string(TBL{:,1});
         end
     catch
-        warning('Problema formateando fechas mensuales. Se usan tal cual.');
+        warning('Hubo un problema formateando las fechas. Se usaran tal cual vienen.');
         periods = string(TBL{:,1});
     end
 else
-    periods = string(TBL{:,1});   % ej: '2005Q1'
+    periods = string(TBL{:,1});
 end
 
 Ytbl_raw    = TBL(:,2:end);
 allVarNames = Ytbl_raw.Properties.VariableNames;
 
-% Selección interactiva
 if USE_INTERACTIVE_SELECTION
     fprintf('Data Columns:\n');
     for i = 1:numel(allVarNames)
         fprintf('%d: %s\n', i, allVarNames{i});
     end
-    sel_idx = input('Indices para ENDÓGENAS (VAR / Cholesky Order) (ej: [1 3]): ');
-    fprintf('\nSelecciona variables EXÓGENAS adicionales (además del polinomio). [] si ninguna.\n');
-    sel_exo_idx = input('Indices para EXÓGENAS (ej: [5 6] o []): ');
+    sel_idx = input('Indices para ENDOGENAS (VAR / Cholesky Order) (ej: [1, 3]): ');
+    fprintf('\nSelecciona las variables EXOGENAS adicionales (ademas del polinomio).\n');
+    fprintf('Deja vacio y pulsa Enter si no quieres ninguna.\n');
+    sel_exo_idx = input('Indices para EXOGENAS (ej: [5, 6] o []): ');
 else
-    sel_idx     = default_var_indices;
+    sel_idx = default_var_indices;
     sel_exo_idx = [];
 end
 
-% Endógenas
+% Endogenous and exogenous selection
 Ytbl      = Ytbl_raw(:, sel_idx);
 var_order = Ytbl.Properties.VariableNames;
 
-% Exógenas externas (raw)
 if ~isempty(sel_exo_idx)
     Ytbl_exo_raw = Ytbl_raw(:, sel_exo_idx);
 else
     Ytbl_exo_raw = table();
 end
 
-% Nombres exógenas externas
 if ~isempty(sel_exo_idx)
     external_exo_names = Ytbl_raw.Properties.VariableNames(sel_exo_idx);
 else
@@ -115,9 +104,9 @@ disp(var_order');
 
 [n_full, k_selected] = size(Ytbl);
 
-%% 3) CMA (FULL SAMPLE) -> corte -> Chebyshev (en muestra final)
+%% 3) CMA (FULL SAMPLE) -> cutoff -> Chebyshev-ready sample
 
-% 3.1 CMA sobre muestra completa
+% 3.1 Full-sample CMA
 if monthly_data
     if n_full < 13
         error('Not enough observations for Monthly CMA (Need > 12).');
@@ -134,18 +123,16 @@ end
 
 n_cma = numel(idx_cma);
 
-% CMA endógenas
 cma_endo = NaN(n_cma, k_selected);
 for j = 1:k_selected
     y = double(Ytbl{:,j});
     y_cma = cma_func(y);
     if numel(y_cma) ~= n_cma
-        error('CMA output length mismatch in endo col %d.', j);
+        error('CMA output length mismatch in endogenous column %d.', j);
     end
     cma_endo(:,j) = y_cma;
 end
 
-% CMA exógenas externas
 cma_exo = [];
 if ~isempty(sel_exo_idx)
     n_exo_selected = numel(sel_exo_idx);
@@ -154,7 +141,7 @@ if ~isempty(sel_exo_idx)
         y = double(Ytbl_exo_raw{:,j});
         y_cma = cma_func(y);
         if numel(y_cma) ~= n_cma
-            error('CMA output length mismatch in exo col %d.', j);
+            error('CMA output length mismatch in exogenous column %d.', j);
         end
         cma_exo(:,j) = y_cma;
     end
@@ -163,12 +150,13 @@ end
 endo_raw    = cma_endo;
 periods_cma = periods(idx_cma);
 
-% 3.2 Corte (ya suavizado)
+% 3.2 Cutoff after smoothing (same order as master_code)
 if use_precovid
     fprintf('\n--- Buscando fecha de corte: %s ---\n', CUTOFF);
-    cutoff_idx = find(strcmp(periods_cma, CUTOFF));
+    cutoff_idx = find(strcmp(periods_cma, CUTOFF), 1, 'first');
+
     if isempty(cutoff_idx)
-        warning('La fecha "%s" no se encontró. Se usará muestra completa.', CUTOFF);
+        warning('La fecha "%s" no se encontro. Se usara muestra completa.', CUTOFF);
     else
         endo_raw    = endo_raw(1:cutoff_idx, :);
         periods_cma = periods_cma(1:cutoff_idx);
@@ -176,75 +164,39 @@ if use_precovid
             cma_exo = cma_exo(1:cutoff_idx, :);
         end
         n_cma = cutoff_idx;
-        fprintf('Datos cortados en %s. Nueva longitud: %d obs.\n', CUTOFF, cutoff_idx);
+        fprintf('Datos cortados exitosamente en %s. Nueva longitud: %d obs.\n', CUTOFF, cutoff_idx);
     end
 end
 
-% 3.3 Construcción t in [-1,1] y base Chebyshev 0..m_max
-if monthly_data
-    try
-        dt = datetime(periods_cma, "InputFormat","MM/dd/yyyy");
-    catch
-        dt = datetime(periods_cma);
-    end
-else
-    try
-        dt = datetime(periods_cma, "InputFormat","uuuu'Q'Q");
-    catch
-        dt = datetime(periods_cma);
-    end
-    dt = dateshift(dt, 'end', 'quarter');
-end
+%% 4) Logs and fixed components
 
-time_years = years(dt - dt(1));
-t_cma = 2*(time_years - min(time_years)) / (max(time_years) - min(time_years)) - 1;
-t_cma = max(-1, min(1, t_cma));
+% Endogenous
+endo_log = log(endo_raw);
 
-if use_cosine_def
-    theta = acos(t_cma);
-    kvec  = 0:m_max;
-    T     = cos(theta * kvec);   % n_cma x (m_max+1)
-else
-    T       = zeros(n_cma, m_max+1);
-    T(:,1)  = 1;
-    if m_max >= 1, T(:,2) = t_cma; end
-    for kk = 2:m_max
-        T(:,kk+1) = 2*t_cma.*T(:,kk) - T(:,kk-1);
-    end
-end
-
-%% 4) Logs y construcción final endo/exo externas (se mantendrán fijas en el loop)
-
-% Endógenas: log(CMA)
-if any(endo_raw(:) <= 0)
-    error('Hay valores <= 0 en endógenas después del CMA; no se puede aplicar log.');
-end
-endo = log(endo_raw);
-endo = double(endo);
-
-% Exógenas externas: log(CMA_exo) si existen
+% External exogenous
 exo_external_final = [];
 if ~isempty(cma_exo)
     if any(cma_exo(:) <= 0)
-        warning('Hay valores <= 0 en exógenas externas antes del log.');
+        warning('Cuidado: Hay valores <= 0 en las exogenas externas antes del log.');
     end
     exo_external_final = log(cma_exo);
-    exo_external_final = double(exo_external_final);
 end
+
+endo = double(endo_log);
 
 if any(isnan(endo(:))) || any(isnan(exo_external_final(:)))
-    error('NaNs detectados tras CMA/log.');
+    error('NaNs detectados. Revisa el CMA o los logs.');
 end
 
-%% 5) VARX-Uhlig para múltiples m* (usa base Chebyshev completa 1..m*)
+%% 5) VARX-Uhlig for multiple m* (MASTER-consistent)
 
 data = endo;
 [~, k] = size(data);
 ne = k;
 
-% Elegir shock (mismo para todos los m*)
+% Select one shock index for all m*
 variable_names = cellstr(var_order);
-fprintf('\nVar variables en orden final:\n');
+fprintf('\nVAR variables en orden final:\n');
 for i = 1:numel(variable_names)
     fprintf('%d: %s\n', i, variable_names{i});
 end
@@ -252,48 +204,54 @@ end
 IMP = 0;
 while isempty(IMP) || ~isnumeric(IMP) || IMP < 1 || IMP > k
     try
-        IMP = input(sprintf('Elige el índice del shock (1-%d): ', k));
+        IMP = input(sprintf('Elige el indice del shock (1-%d): ', k));
         if isempty(IMP) || ~isnumeric(IMP) || IMP < 1 || IMP > k
             fprintf('Error: debe ser entero entre 1 y %d.\n', k);
         end
     catch
-        fprintf('Entrada inválida.\n');
+        fprintf('Entrada invalida.\n');
     end
 end
 fprintf('Shock seleccionado: %d: %s\n', IMP, variable_names{IMP});
 
-assert(max(m_star_grid) <= m_max, 'max(m_star_grid) no puede exceder m_max.');
-
-% Contenedor: mediana IRF por m*  -> (s x ne x nm)
 nm = numel(m_star_grid);
 IRF_med_all = NaN(s, ne, nm);
 
 for idx_m = 1:nm
     m_star = m_star_grid(idx_m);
-    fprintf('\n--- Estimando VARX para m* = %d (Chebyshev k=1..%d) ---\n', m_star, m_star);
+    fprintf('\n--- Estimando VARX para m* = %d ---\n', m_star);
 
-    % Base Chebyshev k=1..m_star (drop T0 porque estimavarx mete intercepto)
-    T_cheb = T(:, 2:(m_star+1));      % n_cma x m_star
+    % Chebyshev basis exactly as in master_code for this m*
+    tt = (1:n_cma)';
+    su = [];
+    Jmax = ceil(m_star/2);
+    for j = 1:Jmax
+        if (2*j - 1) <= m_star
+            su = [su, chevyp_ort2(j, n_cma, tt)];
+        end
+        if (2*j) <= m_star
+            su = [su, chevyp_ort3(j, n_cma, tt)];
+        end
+    end
+
+    T_cheb = [chevyp_ort1(n_cma, tt), su];
     T_cheb = T_cheb - mean(T_cheb, 1);
 
-    % Exógenas finales para este m*
     exo = [double(T_cheb), double(exo_external_final)];
     n_exo_total = size(exo, 2);
 
-    fprintf('VARX exógenas totales: %d (= %d Chebyshev + %d externas)\n', ...
+    fprintf('VARX exogenas totales: %d (= %d Chebyshev + %d externas)\n', ...
         n_exo_total, size(T_cheb,2), size(exo_external_final,2));
 
-    % Estimar VARX
     [betas, xxx, omega, res] = estimavarx(data, p, exo);
 
-    % Quitar exógenas de betas (para dinámica de la VAR)
     betas_imp = betas(:, 1:end-n_exo_total);
 
-    % X'X condicional en exógenas (Schur complement) como en el master
-    r = 1 + k*p;           % const + lags
-    q = size(xxx,1);       % total regresores = r + n_exo_total
+    % Conditional X'X for [const + lags] given exogenous (Schur complement)
+    r = 1 + k*p;
+    q = size(xxx,1);
     if q ~= r + n_exo_total
-        error('Dimension mismatch: size(xxx,1) != (1+k*p+n_exo_total).');
+        error('Dimension mismatch: GAM size does not equal (1+k*p+n_exo_total).');
     end
 
     if n_exo_total > 0
@@ -306,42 +264,42 @@ for idx_m = 1:nm
         else
             GAM22inv = inv(GAM22);
         end
+
         xx_cond = GAM11 - GAM12 * GAM22inv * GAM12';
     else
         xx_cond = xxx;
     end
 
-    % Draws y mediana (SIN intervalos)
     IRF_draws = NaN(s, ne, reps);
 
     for rep = 1:reps
-        % Sigma ~ invWishart-ish (mismo esquema que tu master)
-        R     = randnm(0, inv(omega)/size(res,1), size(res,1));
+        % Draw Sigma
+        R = randnm(0, inv(omega)/size(res,1), size(res,1));
         Sigma = inv(R * R');
 
-        % B | Sigma
+        % Draw B | Sigma using xx_cond (MASTER-consistent)
         B_cov = kron(inv(xx_cond), Sigma);
-        B     = randnm(betas_imp(:), B_cov, 1);
+        B = randnm(betas_imp(:), B_cov, 1);
 
-        % Reacomodo de B -> storeb (k x r)
-        ss_idx = (1:k:length(B)+k)';     % r+1 cortes
+        % Rearrange B
+        ss_idx = (1:k:length(B)+k)';
         storeb = zeros(k, length(ss_idx)-1);
         for h = 1:length(ss_idx)-1
             storeb(:,h) = B(ss_idx(h):ss_idx(h+1)-1,:);
         end
 
-        % Cholesky e impulso
-        C     = transpose(chol(Sigma));
+        % Cholesky shock
+        C = transpose(chol(Sigma));
         v_imp = C(:, IMP);
-
         if USE_UNIT_SHOCK
             scale = v_imp(IMP);
             if abs(scale) > 1e-12
                 v_imp = v_imp / scale;
+            else
+                warning('Shock %d: escala casi cero, se deja como 1 s.d.', IMP);
             end
         end
 
-        % IRF: s x ne
         resp = impulse(storeb, v_imp, s, p);
         IRF_draws(:,:,rep) = resp;
     end
@@ -349,21 +307,19 @@ for idx_m = 1:nm
     IRF_med_all(:,:,idx_m) = median(IRF_draws, 3);
 end
 
-%% 6) Gráfica: múltiples m* (sin intervalos)
+%% 6) Plot: multiple m* line IRFs (no confidence bands)
 
 if monthly_data
     freq_divisor = 12;
-    xlabel_text  = 'Years';
 else
     freq_divisor = 4;
-    xlabel_text  = 'Years';
 end
-x     = (0:s-1)/freq_divisor;
+x = (0:s-1)/freq_divisor;
 years = 0:floor((s-1)/freq_divisor);
 
 colors = lines(nm);
 
-figure('Name','IRFs VARX Chebyshev (multi m*)','Color','w');
+figure('Name','IRFs VARX con Chebyshev (multi m*)','Color','w');
 
 if use_precovid
     cutoff_text = sprintf('Corte en %s', CUTOFF);
@@ -371,10 +327,10 @@ else
     cutoff_text = 'Sin corte';
 end
 
-sgtitle(sprintf('IRFs multi m* (shock: %s) | p=%d, s=%d, %s, %s, Exo=%s', ...
-    variable_names{IMP}, p, s, cutoff_text, time_granularity, txt_exo), 'FontSize', 13);
+sgtitle(sprintf('IRFs (shock: %s) | p=%d, s=%d, %s, %s, Exo=%s', ...
+    variable_names{IMP}, p, s, cutoff_text, time_granularity, txt_exo), ...
+    'FontSize', 13);
 
-% Layout tipo master (2x4) con slots vacíos si ne<8
 ncols = 4;
 nrows = max(2, ceil(ne/ncols));
 
@@ -394,7 +350,7 @@ for ii = 1:(nrows*ncols)
 
     yline(0,'k');
     title(variable_names{ii}, 'Interpreter','none');
-    xlabel(xlabel_text);
+    xlabel('Years');
     xticks(years);
     xticklabels(string(years));
 
@@ -406,7 +362,7 @@ for ii = 1:(nrows*ncols)
     hold off;
 end
 
-%% 7) Guardar resultados
+%% 7) Save results
 
 results_meta = struct();
 results_meta.var_order           = var_order;
@@ -416,14 +372,13 @@ results_meta.s                   = s;
 results_meta.reps                = reps;
 results_meta.k                   = k;
 results_meta.m_star_grid         = m_star_grid;
-results_meta.m_max               = m_max;
 results_meta.periods             = periods_cma;
 results_meta.shock_plotted_index = IMP;
 results_meta.shock_plotted_name  = variable_names{IMP};
 results_meta.use_precovid        = use_precovid;
 results_meta.cutoff              = CUTOFF;
 
-save('varx_irf_results_multi_mstar_MASTER.mat', 'IRF_med_all', 'results_meta');
+save('varx_irf_results_multi_mstar_chevbase.mat', 'IRF_med_all', 'results_meta');
 
 toc;
-fprintf('Saved as "varx_irf_results_multi_mstar_MASTER.mat".\n');
+fprintf('Saved as "varx_irf_results_multi_mstar_chevbase.mat".\n');

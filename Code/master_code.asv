@@ -9,7 +9,7 @@
 
 
 clear all; clc; close all; tic;
-rng(12345,'twister');
+
 addpath("C:\Users\Carlos Coronel\Documents\Informalidad\Informality-InterestRate\Code\calls");
 
 
@@ -22,21 +22,21 @@ use_cosine_def = true;
 use_68percent = true; %You can choose to plot one or both of the CI, if both are false none will be plotted
 use_95percent = true; 
 monthly_data = true; %Usar datos mensuales
-PLOT_CHEB_TREND_SUBPLOTS = false;   % true/false: figura adicional con series + tendencia Chebyshev 
+PLOT_CHEB_TREND_SUBPLOTS = true;   % true/false: figura adicional con series + tendencia Chebyshev 
 USE_UNIT_SHOCK = true;
 
 % --- Parámetros del Modelo ---
 if monthly_data
-    CUTOFF = "06/01/2019"; 
+    CUTOFF = "12/01/2018"; 
     filename = "C:\Users\Carlos Coronel\Documents\Respaldo Memoria\leyva_research\data\clean\mensuales_2005.xlsx";
     time_granularity = "Mensual";
 else
-    CUTOFF = "2019Q2";
+    CUTOFF = "2019Q4";
     filename = "C:\Users\Carlos Coronel\Documents\Respaldo Memoria\leyva_research\data\clean\trimestrales_primero.xlsx";
     time_granularity = "Trimestral";
 end
 m = 10;      % Chebyshev max order
-m_star = 6; % Degree of the polynomial to be used
+m_star =6; % Degree of the polynomial to be used
 p = 1;      % VAR lags
 s = 49;     % IRF horizon (steps)
 reps = 1000;  % Monte carlo repetitions
@@ -62,7 +62,7 @@ end
 %%
 Ytbl_raw = data(:,2:end);       
 allVarNames = Ytbl_raw.Properties.VariableNames;
-%%
+
 % --- Dynamic selection (Endógenas) ---
 if USE_INTERACTIVE_SELECTION 
     fprintf('Data Columns:\n');
@@ -424,7 +424,7 @@ for ii = 1:(nrows*ncols)
     end
 
     IR_data = eval(['resp' num2str(ii) 'imp' num2str(IMP)]);   % (s x reps)
-    IRm     = median(IR_data, 2);                               % (s x 1)
+    IRm     = mean(IR_data, 2);                               % (s x 1)
 
     hold on;
 
