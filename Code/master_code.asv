@@ -9,7 +9,7 @@
 
 
 clear all; clc; close all; tic;
-rng(12345,'twister');
+
 addpath("C:\Users\Carlos Coronel\Documents\Informalidad\Informality-InterestRate\Code\calls");
 
 
@@ -17,40 +17,29 @@ addpath("C:\Users\Carlos Coronel\Documents\Informalidad\Informality-InterestRate
 % default index
 default_var_indices = [1,2,3,4];
 USE_INTERACTIVE_SELECTION = true; 
-use_precovid = false; %crop to cutoff
+use_precovid = true; %crop to cutoff
 use_cosine_def = true;
 use_68percent = true; %You can choose to plot one or both of the CI, if both are false none will be plotted
 use_95percent = true; 
-monthly_data = false; %Usar datos mensuales
-PLOT_CHEB_TREND_SUBPLOTS = false;   % true/false: figura adicional con series + tendencia Chebyshev 
+monthly_data = true; %Usar datos mensuales
+PLOT_CHEB_TREND_SUBPLOTS = true;   % true/false: figura adicional con series + tendencia Chebyshev 
 USE_UNIT_SHOCK = true;
-
-%% Unstable Draws
-REJECT_UNSTABLE_DRAWS = true;
-STABILITY_TOL = 1e-6;      % rechaza si spectral radius >= 1 - tol
-MAX_ATTEMPTS_MULT = 50;    % intentos máximos = reps * este factor
-
 
 % --- Parámetros del Modelo ---
 if monthly_data
-    CUTOFF = "06/01/2019"; 
+    CUTOFF = "12/01/2018"; 
     filename = "C:\Users\Carlos Coronel\Documents\Respaldo Memoria\leyva_research\data\clean\mensuales_2005.xlsx";
     time_granularity = "Mensual";
 else
-    CUTOFF = "2019Q2";
+    CUTOFF = "2019Q4";
     filename = "C:\Users\Carlos Coronel\Documents\Respaldo Memoria\leyva_research\data\clean\trimestrales_primero.xlsx";
     time_granularity = "Trimestral";
 end
 m = 10;      % Chebyshev max order
-m_star = 6; % Degree of the polynomial to be used
+m_star =6; % Degree of the polynomial to be used
 p = 1;      % VAR lags
+s = 49;     % IRF horizon (steps)
 reps = 1000;  % Monte carlo repetitions
-
-if monthly_data
-    s = 49; % 4 años + 1 mes
-else
-    s = 17; % 4 años + 1 trimestre
-end
 
 %% 2. Loading, selection and processing
 %  loading
@@ -73,7 +62,7 @@ end
 %%
 Ytbl_raw = data(:,2:end);       
 allVarNames = Ytbl_raw.Properties.VariableNames;
-%%
+
 % --- Dynamic selection (Endógenas) ---
 if USE_INTERACTIVE_SELECTION 
     fprintf('Data Columns:\n');
@@ -307,73 +296,52 @@ for ii = 1:ne
     end
 end
 
-i = 0;
-attempt = 0;
-rejected_unstable = 0;
-max_attempts = MAX_ATTEMPTS_MULT * reps;
-
-while i < reps && attempt < max_attempts
-    attempt = attempt + 1;
-
-    % Draw Sigma
+%  Uhlig sample and IRFs building
+i = 1;
+while i <= reps
+    % Draws for sigma
     R = randnm(0, inv(omega)/size(res,1), size(res,1));
     Sigma = inv(R * R');
-
-    % Draw B | Sigma
+    
+    % Draws for B conditioned in Sigma
+    %xx = momentxx(data, p); replaced with xxx above
     B_cov = kron(inv(xx_cond), Sigma);
     B = randnm(betas_imp(:), B_cov, 1);
-
+    
     % Rearrange B
     ss = (1:k:length(B)+k)';
     storeb = zeros(k, length(ss)-1);
     for h = 1:length(ss)-1
         storeb(:,h) = B(ss(h):ss(h+1)-1,:);
     end
-
-    % Rechazo por inestabilidad (misma convención que impulse.m)
-    if REJECT_UNSTABLE_DRAWS
-        B_lags = storeb(:,2:end);  % sin constante
-        if p == 1
-            gama = B_lags;
-        else
-            ident = [kron(eye(k),eye(p-1)) zeros(k*(p-1),k)];
-            gama = [B_lags; ident];
-        end
-
-        if max(abs(eig(gama))) >= (1 - STABILITY_TOL)
-            rejected_unstable = rejected_unstable + 1;
-            continue
-        end
-    end
-
-    % Draw aceptado
-    i = i + 1;
-
+    
     % Cholesky and impulse vectors
-    C = transpose(chol(Sigma));
+    C = transpose(chol(Sigma));   % Sigma = C * C'
     for ii = 1:ne
-        v_imp = C(:, ii);
+        v_imp = C(:, ii);         % choque de 1 s.d. estructural por defecto
         if USE_UNIT_SHOCK
             scale = v_imp(ii);
             if abs(scale) > 1e-12
                 v_imp = v_imp / scale;
+            else
+                warning('Shock %d: escala casi cero, se deja como 1 s.d.', ii);
             end
         end
         eval(['imp' num2str(ii) ' = v_imp;']);
     end
-
-    % IRFs
+    
+    % IRFs para cada shock
     for ii = 1:ne
-        eval(['resp' num2str(ii) ' = impulse(storeb, imp' num2str(ii) ', s, p);']);
+        eval(['resp' num2str(ii) ' = impulse(storeb, imp' num2str(ii) ', s, p);' ]);
     end
-
-    % Guardar IRFs
+    
+    % Guardar IRFs por par
     for ii = 1:ne
         for rr = 1:ne
-            eval(['resp' num2str(rr) 'imp' num2str(ii) '(:, i) = resp' num2str(ii) '(:, ' num2str(rr) ');']);
+            eval(['resp' num2str(rr) 'imp' num2str(ii) '(:, i) = resp' num2str(ii) '(:, ' num2str(rr) ');' ]);
         end
     end
-
+    
     % Variance decomposition
     for ii = 1:ne
         for rr = 1:ne
@@ -384,15 +352,8 @@ while i < reps && attempt < max_attempts
             eval(['var_resp' num2str(rr) 'imp' num2str(ii) '(:, i) = (resp' num2str(ii) '(:, ' num2str(rr) ').^2) ./ aux;']);
         end
     end
+    i = i + 1;
 end
-
-if i < reps
-    error('Solo se obtuvieron %d draws estables de %d. Sube MAX_ATTEMPTS_MULT o simplifica el modelo.', i, reps);
-end
-
-fprintf('Draws estables: %d/%d intentos. Rechazados por inestabilidad: %d (%.2f%%)\n', ...
-    i, attempt, rejected_unstable, 100*rejected_unstable/attempt);
-
 
 %% 6. IRFs (INTEGRADO: selección 68/95 con true/false y colores distintos)
 
@@ -463,7 +424,7 @@ for ii = 1:(nrows*ncols)
     end
 
     IR_data = eval(['resp' num2str(ii) 'imp' num2str(IMP)]);   % (s x reps)
-    IRm     = median(IR_data, 2);                               % (s x 1)
+    IRm     = mean(IR_data, 2);                               % (s x 1)
 
     hold on;
 
