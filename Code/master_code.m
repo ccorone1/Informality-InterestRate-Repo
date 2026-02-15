@@ -17,13 +17,19 @@ addpath("C:\Users\Carlos Coronel\Documents\Informalidad\Informality-InterestRate
 % default index
 default_var_indices = [1,2,3,4];
 USE_INTERACTIVE_SELECTION = true; 
-use_precovid = true; %crop to cutoff
+use_precovid = false; %crop to cutoff
 use_cosine_def = true;
 use_68percent = true; %You can choose to plot one or both of the CI, if both are false none will be plotted
 use_95percent = true; 
-monthly_data = true; %Usar datos mensuales
+monthly_data = false; %Usar datos mensuales
 PLOT_CHEB_TREND_SUBPLOTS = false;   % true/false: figura adicional con series + tendencia Chebyshev 
 USE_UNIT_SHOCK = true;
+
+%% Unstable Draws
+REJECT_UNSTABLE_DRAWS = true;
+STABILITY_TOL = 1e-6;      % rechaza si spectral radius >= 1 - tol
+MAX_ATTEMPTS_MULT = 50;    % intentos máximos = reps * este factor
+
 
 % --- Parámetros del Modelo ---
 if monthly_data
@@ -38,8 +44,13 @@ end
 m = 10;      % Chebyshev max order
 m_star = 6; % Degree of the polynomial to be used
 p = 1;      % VAR lags
-s = 49;     % IRF horizon (steps)
 reps = 1000;  % Monte carlo repetitions
+
+if monthly_data
+    s = 49; % 4 años + 1 mes
+else
+    s = 17; % 4 años + 1 trimestre
+end
 
 %% 2. Loading, selection and processing
 %  loading
@@ -296,52 +307,73 @@ for ii = 1:ne
     end
 end
 
-%  Uhlig sample and IRFs building
-i = 1;
-while i <= reps
-    % Draws for sigma
+i = 0;
+attempt = 0;
+rejected_unstable = 0;
+max_attempts = MAX_ATTEMPTS_MULT * reps;
+
+while i < reps && attempt < max_attempts
+    attempt = attempt + 1;
+
+    % Draw Sigma
     R = randnm(0, inv(omega)/size(res,1), size(res,1));
     Sigma = inv(R * R');
-    
-    % Draws for B conditioned in Sigma
-    %xx = momentxx(data, p); replaced with xxx above
+
+    % Draw B | Sigma
     B_cov = kron(inv(xx_cond), Sigma);
     B = randnm(betas_imp(:), B_cov, 1);
-    
+
     % Rearrange B
     ss = (1:k:length(B)+k)';
     storeb = zeros(k, length(ss)-1);
     for h = 1:length(ss)-1
         storeb(:,h) = B(ss(h):ss(h+1)-1,:);
     end
-    
+
+    % Rechazo por inestabilidad (misma convención que impulse.m)
+    if REJECT_UNSTABLE_DRAWS
+        B_lags = storeb(:,2:end);  % sin constante
+        if p == 1
+            gama = B_lags;
+        else
+            ident = [kron(eye(k),eye(p-1)) zeros(k*(p-1),k)];
+            gama = [B_lags; ident];
+        end
+
+        if max(abs(eig(gama))) >= (1 - STABILITY_TOL)
+            rejected_unstable = rejected_unstable + 1;
+            continue
+        end
+    end
+
+    % Draw aceptado
+    i = i + 1;
+
     % Cholesky and impulse vectors
-    C = transpose(chol(Sigma));   % Sigma = C * C'
+    C = transpose(chol(Sigma));
     for ii = 1:ne
-        v_imp = C(:, ii);         % choque de 1 s.d. estructural por defecto
+        v_imp = C(:, ii);
         if USE_UNIT_SHOCK
             scale = v_imp(ii);
             if abs(scale) > 1e-12
                 v_imp = v_imp / scale;
-            else
-                warning('Shock %d: escala casi cero, se deja como 1 s.d.', ii);
             end
         end
         eval(['imp' num2str(ii) ' = v_imp;']);
     end
-    
-    % IRFs para cada shock
+
+    % IRFs
     for ii = 1:ne
-        eval(['resp' num2str(ii) ' = impulse(storeb, imp' num2str(ii) ', s, p);' ]);
+        eval(['resp' num2str(ii) ' = impulse(storeb, imp' num2str(ii) ', s, p);']);
     end
-    
-    % Guardar IRFs por par
+
+    % Guardar IRFs
     for ii = 1:ne
         for rr = 1:ne
-            eval(['resp' num2str(rr) 'imp' num2str(ii) '(:, i) = resp' num2str(ii) '(:, ' num2str(rr) ');' ]);
+            eval(['resp' num2str(rr) 'imp' num2str(ii) '(:, i) = resp' num2str(ii) '(:, ' num2str(rr) ');']);
         end
     end
-    
+
     % Variance decomposition
     for ii = 1:ne
         for rr = 1:ne
@@ -352,8 +384,15 @@ while i <= reps
             eval(['var_resp' num2str(rr) 'imp' num2str(ii) '(:, i) = (resp' num2str(ii) '(:, ' num2str(rr) ').^2) ./ aux;']);
         end
     end
-    i = i + 1;
 end
+
+if i < reps
+    error('Solo se obtuvieron %d draws estables de %d. Sube MAX_ATTEMPTS_MULT o simplifica el modelo.', i, reps);
+end
+
+fprintf('Draws estables: %d/%d intentos. Rechazados por inestabilidad: %d (%.2f%%)\n', ...
+    i, attempt, rejected_unstable, 100*rejected_unstable/attempt);
+
 
 %% 6. IRFs (INTEGRADO: selección 68/95 con true/false y colores distintos)
 

@@ -17,7 +17,7 @@ default_var_indices       = [1,2,3,4];
 USE_INTERACTIVE_SELECTION = true;
 % 065438
 use_precovid   = true;
-monthly_data   = false;
+monthly_data   = true;
 USE_UNIT_SHOCK = true;
 
 % Data configuration
@@ -32,11 +32,11 @@ else
 end
 
 % Grid of m* to compare
-m_star_grid = [5 6 7 8 9 10 15];
+m_star_grid = [5 6 7 8 15];
 
 % VAR / IRF
 p    = 1;
-s    = 17;
+s    = 49;
 reps = 1000;
 
 assert(all(m_star_grid >= 1), 'm_star_grid must contain integers >= 1.');
