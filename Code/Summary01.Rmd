@@ -1,0 +1,292 @@
+---
+title: "Informality and Interest Rate"
+author: "Carlos Coronel"
+date: "2024-06-17"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+All the experiments here use the long data base, that includes from 1987 to 2019.
+
+# Observaciones
+
+1. Los datos de nominal exchange generan un problema por el "nuevo peso" del 92. 
+Limitando la muestra usable para el resto del experimento, efectivamente tirando 27 observaciones.
+\
+2. Creo que un buen camino a seguir ahora es extender la muestra del long data base hasta el 2025, para efectivamente capturar los datos de pandemia.
+\
+3. Estoy un poco preocupado por utilizar muestras previas al 2001 (antes de objetivos de inflación), ya que shock identificado por Cholesky no representa el mismo objeto económico en ambos períodos.
+Pudiendo volver los resultados no interpretables.
+\
+4. En este Markdown no está la comparación con los resultados de mi base de datos porque no encontré una forma de compararlas lado a lado, lo estoy trabajando.
+\
+5. Los dat  os incluyen US Industrial Production, US PCE, CRB Index and Oil Index (from pink sheets) y nominal exchange. Para recrear resultados es necesario quitarlas por el Packrv.
+
+# Replicación
+
+## Choque {.tabset}
+
+Shocks are of one standard deviation. The horizon is of 10 quarters, accounting up to 2 years and a half.
+The order of the choleski decomposition is the same as the order of appearance in the graph. Being the last the most endogenous variable.
+Between specifications the only variable that changes is the first one, which is the one that receives the shock.
+The rest of the variables are the same across specifications.
+The graphs are read in the following order: choose the first variable, then the degree of the polynomial (which is the only exogenous variable).
+
+
+### EMBI
+
+#### Polinomio de Chevysheb {.tabset}
+
+Only for the polynomial of 7th degree is reported for both 68% & 95& and 68% alone.
+
+##### 5
+
+Choque en EMBI con polinomio de 5to grado, p = 1, sin exógenas.
+```{r embi_5, echo=FALSE}
+knitr::include_graphics("embi_5.svg")
+```
+
+##### 6
+
+Choque en EMBI con polinomio de 6to grado, p = 1, sin exógenas.
+
+```{r embi_6, echo=FALSE}
+knitr::include_graphics("embi_6.svg")
+```
+
+
+##### 7
+Choque en EMBI con polinomio de 7mo grado, con IC al 68%, p = 1, sin exógenas.
+
+```{r embi_68_7, echo=FALSE}
+knitr::include_graphics("embi_68_7.svg")
+```
+
+
+Choque en EMBI con polinomio de 7mo grado, p = 1, sin exógenas.
+
+```{r embi_7, echo=FALSE}
+knitr::include_graphics("embi_7.svg")
+```
+
+##### 9
+
+Choque en EMBI con polinomio de 9no grado, p = 1, sin exógenas.
+
+```{r embi_9, echo=FALSE}
+
+knitr::include_graphics("embi_9.svg")
+```
+
+### US GDP
+
+#### Polinomio de Chevysheb {.tabset}
+
+##### 5
+
+Choque en GDP de USA con polinomio de 5to grado, p = 1, sin exógenas.
+
+```{r gdp_usa_5, echo=FALSE}
+knitr::include_graphics("gdp_usa_5.svg")
+```
+
+
+##### 6
+
+Choque en GDP de USA con polinomio de 6to grado, p = 1, sin exógenas.
+
+```{r gdp_usa_6, echo=FALSE}
+knitr::include_graphics("gdp_usa_6.svg")
+```
+
+##### 7
+
+Choque en GDP de USA con polinomio de 7mo grado, con IC al 68%, p = 1, sin exógenas.
+
+
+```{r gdp_usa_68_7, echo=FALSE}
+knitr::include_graphics("gdp_usa_68_7.svg")
+```
+
+Choque en GDP de USA con polinomio de 7mo grado, p = 1, sin exógenas.
+
+```{r gdp_usa_7, echo=FALSE}
+knitr::include_graphics("gdp_usa_7.svg")
+```
+
+##### 9
+
+Choque en GDP de USA con polinomio de 9no grado, p = 1, sin exógenas.
+
+
+```{r gdp_usa_9, echo=FALSE}
+knitr::include_graphics("gdp_usa_9.svg")
+```
+
+### TOT
+
+#### Polinomio de Chevysheb {.tabset}
+
+##### 5
+
+Choque en Terms of Trade con polinomio de 5to grado, p = 1, sin exógenas.
+
+```{r tot_5, echo=FALSE}
+knitr::include_graphics("tot_5.svg")
+```
+
+##### 6
+
+Choque en Terms of Trade con polinomio de 6to grado, p = 1, sin exógenas.
+
+```{r tot_6, echo=FALSE}
+knitr::include_graphics("tot_6.svg")
+```
+
+##### 7
+
+Choque en Terms of Trade con polinomio de 7mo grado, p = 1, sin exógenas.
+
+
+```{r tot_68_7, echo=FALSE}
+knitr::include_graphics("tot_68_7.svg")
+```
+
+Choque en Terms of Trade con polinomio de 7mo grado, p = 1, sin exógenas.
+
+
+```{r tot_7, echo=FALSE}
+knitr::include_graphics("tot_7.svg")
+```
+
+##### 9
+
+Choque en Terms of Trade con polinomio de 9no grado, p = 1, sin exógenas.
+
+
+```{r tot_9, echo=FALSE}
+knitr::include_graphics("tot_9.svg")
+```
+
+# Experimentos con Long Data Base
+
+## Nominal Exchange (From Carrilo & Elizondo (working paper))
+
+### Polinomio de Chevysheb {.tabset}
+
+Incluye el **PIB (año base 2013), INPC subyacente, tasa de interés de referencia, tipo de cambio nominal (desde el penúltimo trimestre del 93)**,
+ El choque es en el tipo de cambio nominal. Se incluyen 3 exógenas (+ el polinomio): US Industrial Production, US PCE y CRB Index (From pink sheets). Con un rezago.
+ La muestra total es de 100 observaciones, esto principalmente por los datos Nominales.
+
+#### 5
+
+Choque en Terms of Trade con polinomio de 5to grado, p = 1, 3 exógenas.
+
+
+```{r 4vars+3exo_5, echo=FALSE}
+knitr::include_graphics("4vars+3exo_5.svg")
+```
+
+
+#### 6
+
+Choque en Terms of Trade con polinomio de 6to grado, p = 1, 3 exógenas.
+
+
+```{r 4vars+3exo_6, echo=FALSE}
+knitr::include_graphics("4vars+3exo_6.svg")
+```
+
+
+#### 7
+
+Choque en Terms of Trade con polinomio de 7mo grado, p = 1, 3 exógenas.
+
+```{r 4vars+3exo_7, echo=FALSE}
+knitr::include_graphics("4vars+3exo_7.svg")
+```
+
+
+#### 9
+
+Choque en Terms of Trade con polinomio de 9no grado, p = 1, 3 exógenas.
+
+
+```{r 4vars+3exo_9, echo=FALSE}
+knitr::include_graphics("4vars+3exo_9.svg")
+```
+
+## Incorporating Job Market
+
+### Especification {.tabset}
+
+#### Employment 
+
+##### Polinomio de Chevysheb {.tabset}
+
+###### 5
+
+```{r epop_5, echo=FALSE}
+knitr::include_graphics("epop_5.svg")
+```
+
+
+###### 6
+
+```{r epop_6, echo=FALSE}
+knitr::include_graphics("epop_6.svg")
+```
+
+###### 7
+
+```{r epop_7, echo=FALSE}
+knitr::include_graphics("epop_7.png")
+```
+
+###### 9
+
+```{r epop_9, echo=FALSE}
+knitr::include_graphics("epop_9.png")
+```
+
+#### Employment + Informality
+
+##### Polinomio de Chevysheb {.tabset}
+
+###### 5
+
+Impacto en mercado laboral con polinomio de 5to grado, p = 1, 3 exógenas, las mismas que antes.
+
+
+```{r w_infor_5, echo=FALSE}
+knitr::include_graphics("w_infor_5.svg")
+```
+
+###### 6
+
+Impacto en mercado laboral con polinomio de 6to grado, p = 1, 3 exógenas.
+
+```{r w_infor_6, echo=FALSE}
+knitr::include_graphics("w_infor_6.svg")
+```
+
+###### 7
+
+Impacto en mercado laboral con polinomio de 7mo grado, p = 1, 3 exógenas.
+
+
+```{r w_infor_7, echo=FALSE}
+knitr::include_graphics("w_infor_7.svg")
+```
+
+###### 9
+
+Impacto en mercado laboral con polinomio de 9no grado, p = 1, 3 exógenas.
+
+
+```{r w_infor_9, echo=FALSE}
+knitr::include_graphics("w_infor_9.svg")
+```
+

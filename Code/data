@@ -1,0 +1,40 @@
+from pathlib import Path
+
+import pandas as pd
+
+
+CSV_PATH = Path(r"C:\Users\Carlos Coronel\Downloads\DEXMXUS.csv")
+OUTPUT_PATH = Path(__file__).resolve().with_name("DEXMXUS_quarterly.csv")
+DATE_COLUMN = "observation_date"
+VALUE_COLUMN = "DEXMXUS"
+MISSING_TOKENS = ["", "NA", "NaN", "nan", "."]
+
+
+def main():
+    data = pd.read_csv(
+        CSV_PATH,
+        parse_dates=[DATE_COLUMN],
+        na_values=MISSING_TOKENS,
+    )
+
+    daily = (
+        data[[DATE_COLUMN, VALUE_COLUMN]]
+        .sort_values(DATE_COLUMN)
+        .assign(**{VALUE_COLUMN: lambda df: pd.to_numeric(df[VALUE_COLUMN], errors="coerce")})
+        .set_index(DATE_COLUMN)
+        .asfreq("D")
+    )
+
+    quarterly = daily.resample("QE").mean().round(6)
+    quarterly.index = quarterly.index.to_period("Q").astype(str)
+    quarterly.index.name = "quarter"
+    quarterly.columns = ["average"]
+
+    csv_text = quarterly.to_csv(float_format="%.6f", na_rep="NA", lineterminator="\n")
+    print(csv_text, end="")
+    quarterly.to_csv(OUTPUT_PATH, float_format="%.6f", na_rep="NA", lineterminator="\n")
+    print(f"Saved to: {OUTPUT_PATH}")
+
+
+if __name__ == "__main__":
+    main()

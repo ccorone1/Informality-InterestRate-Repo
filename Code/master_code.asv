@@ -1,6 +1,6 @@
 %% Data processing and SVAR with Chevysheb estimation with input selection
 %
-% By Carlos Coronel (Last update: 06 february, 2026)     
+% By Carlos Coronel (Last update: 06 february, 2026)                                                  
 %
 % CORRECCIÓN ACTUALIZADA:
 % 1. Calcula CMA sobre Full Sample (evita end-point bias).
@@ -20,19 +20,14 @@ USE_INTERACTIVE_SELECTION = true;
 use_precovid = false; %crop to cutoff
 use_cosine_def = true;
 use_68percent = true; %You can choose to plot one or both of the CI, if both are false none will be plotted
-use_95percent = false; 
-monthly_data = false; %Usar datos mensuales
+use_95percent = true; 
+monthly_data = true; %Usar datos mensuales
 PLOT_CHEB_TREND_SUBPLOTS = false;   % true/false: figura adicional con series + tendencia Chebyshev 
-SHOW_FIGURE_TITLES = false;         % true/false: mostrar titulo global (sgtitle)
-X_TICK_STEP = 2;                    % separacion de ticks en el eje X (ej: 2 => 0,2,4,...)
-
 USE_UNIT_SHOCK = true;
-DROP_COLS_BEFORE_PACKR = true;   % true/false: elimina columnas antes de packr
-COLS_TO_DROP_BEFORE_PACKR = [];   % Indices sobre data(:,2:end). Ej: [5 7]. Si [] no elimina nada.
 
 %% Unstable Draws
 REJECT_UNSTABLE_DRAWS = true;
-STABILITY_TOL = 1e-7;      % rechaza si spectral radius >= 1 - tol
+STABILITY_TOL = 1e-6;      % rechaza si spectral radius >= 1 - tol
 MAX_ATTEMPTS_MULT = 50;    % intentos máximos = reps * este factor
 
 
@@ -40,10 +35,10 @@ MAX_ATTEMPTS_MULT = 50;    % intentos máximos = reps * este factor
 if monthly_data
     CUTOFF = "06/01/2019"; 
     filename = "C:\Users\Carlos Coronel\Documents\Respaldo Memoria\leyva_research\data\clean\mensuales_2005.xlsx";
-    time_granularity = "Mensual";   
+    time_granularity = "Mensual";
 else
     CUTOFF = "2019Q2";
-    filename = "C:\Users\Carlos Coronel\Documents\Informalidad\Informality-InterestRate\Data\longdatabase.xlsx";
+    filename = "C:\Users\Carlos Coronel\Documents\Respaldo Memoria\leyva_research\data\clean\trimestrales_primero.xlsx";
     time_granularity = "Trimestral";
 end
 m = 10;      % Chebyshev max order
@@ -54,69 +49,12 @@ reps = 1000;  % Monte carlo repetitions
 if monthly_data
     s = 73; % 4 años + 1 mes
 else
-    s = 11; % 4 años + 1 trimestre
+    s = 17; % 4 años + 1 trimestre
 end
 
 %% 2. Loading, qselection and processing
 %  loadin
 data = readtable(filename);
-
-% Si alguna variable numerica viene como texto/cell (p. ej. desde CSV exportado),
-% convertirla a double para evitar errores en table2array.
-for c = 2:width(data)
-    vname = data.Properties.VariableNames{c};
-    col = data.(vname);
-    if iscell(col) || isstring(col) || ischar(col)
-        data.(vname) = str2double(string(col));
-    end
-end
-
-% Eliminacion opcional de columnas antes de PACKR
-if DROP_COLS_BEFORE_PACKR
-    numeric_var_names = data.Properties.VariableNames(2:end);
-    
-    if USE_INTERACTIVE_SELECTION
-        fprintf('\nData Columns (antes de PACKR):\n');
-        for i = 1:numel(numeric_var_names)
-            fprintf('%d: %s\n', i, numeric_var_names{i});
-        end
-        drop_idx = input('Indices para eliminar antes de PACKR (ej: [5, 7] o []): ');
-    else
-        drop_idx = COLS_TO_DROP_BEFORE_PACKR;
-    end
-    
-    if isempty(drop_idx)
-        drop_var_names = {};
-    else
-        if ~isnumeric(drop_idx)
-            error('COLS_TO_DROP_BEFORE_PACKR debe ser un vector numerico de indices o [].');
-        end
-        if any(mod(drop_idx,1) ~= 0)
-            error('COLS_TO_DROP_BEFORE_PACKR debe contener solo indices enteros.');
-        end
-        drop_idx = unique(drop_idx(:)');
-        if any(drop_idx < 1 | drop_idx > numel(numeric_var_names))
-            error('Indices fuera de rango en COLS_TO_DROP_BEFORE_PACKR. Rango valido: 1:%d', numel(numeric_var_names));
-        end
-        drop_var_names = numeric_var_names(drop_idx);
-    end
-    
-    if ~isempty(drop_var_names)
-        data(:, drop_var_names) = [];
-        fprintf('Columnas eliminadas antes de packr (indices): %s\n', mat2str(drop_idx));
-        fprintf('Nombres eliminados: %s\n', strjoin(drop_var_names, ', '));
-    end
-end
-
-% Limpieza inicial con PACKR: elimina filas con NaN en variables (col 2:end)
-raw_numeric = table2array(data(:,2:end));
-raw_numeric_clean = packr(raw_numeric);
-if size(raw_numeric_clean,1) < size(raw_numeric,1)
-    valid_rows_upload = all(~isnan(raw_numeric),2);
-    data = data(valid_rows_upload,:);
-    warning('packr (carga) elimino %d filas con NaN.', sum(~valid_rows_upload));
-end
-
 % Formatting periods
 if monthly_data
     try
@@ -303,7 +241,7 @@ end
 
 % Input variables final
 endo = double(endo_log);
-% CONCATENACION: [Polinomio, Series_Externas]
+% CONCATENACIÓN: [Polinomio, Series_Externas]
 exo = [double(T_cheb), double(exo_external_final)];
 
 % Chequeos
@@ -466,19 +404,16 @@ col68 = [0.0000, 0.0000, 0.5000];   % 68% azul oscuro
 color_med = [0, 0, 0.5];            % línea mediana (puedes poner [0 0 0] si prefieres)
 mcol = 1;
 
-% --- Eje X (horizonte en numero de periodos, no en anos) ---
-x = 0:(s-1);
-horizons = x;
+% --- Eje X ---
 if monthly_data
-    xlabel_text = 'Meses';
+    freq_divisor = 12;
+    xlabel_text  = 'Years';
 else
-    xlabel_text = 'Q';
+    freq_divisor = 4;
+    xlabel_text  = 'Years';
 end
-
-shown_ticks = horizons(1:X_TICK_STEP:end);
-if shown_ticks(end) ~= horizons(end)
-    shown_ticks = [shown_ticks, horizons(end)];
-end
+x = (0:s-1)/freq_divisor;
+years = 0:floor((s-1)/freq_divisor);
 
 % --- Nombres variables ---
 variable_names = cellstr(var_order);
@@ -511,21 +446,14 @@ else
     cutoff_text = 'Con covid';
 end
 
-if SHOW_FIGURE_TITLES
-    sgtitle(sprintf('IRF al shock de %s (Cholesky) | p=%d, ChebTerms=%d (k<=%d), s=%d, %s, %s, Exo=%s', ...
-        variable_names{IMP}, p, size(T_cheb,2), m_star, s, cutoff_text, time_granularity, txt_exo), 'FontSize', 14);
-end
+sgtitle(sprintf('IRF al shock de %s (Cholesky) | p=%d, ChebTerms=%d (k<=%d), s=%d, %s, %s, Exo=%s', ...
+    variable_names{IMP}, p, size(T_cheb,2), m_star, s, cutoff_text, time_granularity, txt_exo), 'FontSize', 14);
 
-% --- Layout fijo 3x3; los espacios sin serie quedan en blanco ---
-ncols = 3;
-nrows = 3;
-max_plots = nrows * ncols;
+% --- Layout de subplots (robusto si ne cambia) ---
+ncols = 4;
+nrows = 2;
 
-if ne > max_plots
-    warning('Hay %d variables y el layout 3x3 solo muestra las primeras %d.', ne, max_plots);
-end
-
-for ii = 1:max_plots
+for ii = 1:(nrows*ncols)
     subplot(nrows, ncols, ii);
 
     % Si no hay variable para este slot, lo apagas y sigues
@@ -563,8 +491,8 @@ for ii = 1:max_plots
     box on;
     title(variable_names{ii}, 'Interpreter', 'none');
 
-    xticks(shown_ticks);
-    xticklabels(arrayfun(@num2str, shown_ticks, 'UniformOutput', false));
+    xticks(years);
+    xticklabels(arrayfun(@num2str, years, 'UniformOutput', false));
     xlabel(xlabel_text);
 
     set(gca, 'Layer', 'top');
@@ -651,10 +579,8 @@ if PLOT_CHEB_TREND_SUBPLOTS
         hold off;
     end
 
-    if SHOW_FIGURE_TITLES
-        sgtitle(sprintf('Series vs Tendencia Chebyshev | m*=%d | %s | %s', ...
-            m_star, cutoff_text, time_granularity), 'FontSize', 14);
-    end
+    sgtitle(sprintf('Series vs Tendencia Chebyshev | m*=%d | %s | %s', ...
+        m_star, cutoff_text, time_granularity), 'FontSize', 14);
 
 end
 
@@ -680,4 +606,3 @@ save('varx_irf_results.mat', ...
 
 toc;
 fprintf('Saved as "varx_irf_results.mat".\n');
-

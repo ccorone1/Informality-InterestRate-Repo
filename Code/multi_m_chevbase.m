@@ -15,7 +15,6 @@ addpath("C:\Users\Carlos Coronel\Documents\Informalidad\Informality-InterestRate
 
 default_var_indices       = [1,2,3,4];
 USE_INTERACTIVE_SELECTION = true;
-% 065438
 use_precovid   = true;
 monthly_data   = true;
 USE_UNIT_SHOCK = true;
